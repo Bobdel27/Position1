@@ -205,22 +205,39 @@
       popupAnchor: [0, -38]
     });
   }
-  const blueIcon = pinIcon('#2563eb');
-  const redIcon = pinIcon('#dc2626');
+  const blueIcon  = pinIcon('#2563eb');
+  const redIcon   = pinIcon('#dc2626');
+  const greenIcon = pinIcon('#16a34a');
 
   // Active les pseudo-classes :active/:focus au toucher sur iOS Safari
   document.body.addEventListener('touchstart', function(){}, { passive: true });
 
+  // — Variables globales —
   let currentMarker = null;
-  let trackMarker = null;
-  let routeLayer = null;
-  let watchId = null;
-  let tracking = false;
+  let trackMarker   = null;
+  let routeLayer    = null;
+  let startMarker   = null;
+  let watchId       = null;
+  let tracking      = false;
+  let markerLocked  = false;
 
   const statusEl = document.getElementById('status');
   function setStatus(msg){ statusEl.textContent = msg; }
 
-  let markerLocked = false;
+  // Remet le marqueur bleu au-dessus du tracé sans perdre son état
+  function bringBlueToFront(){
+    if(!currentMarker) return;
+    const latlng = currentMarker.getLatLng();
+    const popup  = currentMarker.getPopup();
+    const label  = popup ? popup.getContent() : null;
+    map.removeLayer(currentMarker);
+    currentMarker = L.marker(latlng, { icon: blueIcon, draggable: !markerLocked }).addTo(map);
+    if(label) currentMarker.bindPopup(label);
+    currentMarker.on('dragend', () => {
+      const p = currentMarker.getLatLng();
+      setStatus(`Position déplacée : ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`);
+    });
+  }
 
   function placeBlueMarker(lat, lng, label){
     if(currentMarker) map.removeLayer(currentMarker);
@@ -233,10 +250,10 @@
     map.setView([lat, lng], 17);
   }
 
-  // Appui long sur la carte pour déplacer le point bleu (évite les déplacements accidentels)
-  let pressTimer = null;
+  // — Appui long sur la carte pour déplacer le point bleu —
+  let pressTimer       = null;
   let pressStartLatLng = null;
-  let pressStartPoint = null;
+  let pressStartPoint  = null;
 
   function moveMarkerTo(latlng){
     if(markerLocked) return;
@@ -253,7 +270,7 @@
   function startPress(latlng, point){
     if(markerLocked) return;
     pressStartLatLng = latlng;
-    pressStartPoint = point;
+    pressStartPoint  = point;
     pressTimer = setTimeout(() => {
       if(pressStartLatLng) moveMarkerTo(pressStartLatLng);
       pressStartLatLng = null;
@@ -277,17 +294,21 @@
   mapContainer.addEventListener('touchstart', (e) => {
     const target = e.target;
     if(target && target.closest && target.closest('.leaflet-marker-icon')) return;
+    if(!e.touches || !e.touches[0]) return;
     const t = e.touches[0];
     const rect = mapContainer.getBoundingClientRect();
     const point = L.point(t.clientX - rect.left, t.clientY - rect.top);
     startPress(map.containerPointToLatLng(point), point);
   }, { passive: true });
+
   mapContainer.addEventListener('touchmove', (e) => {
+    if(!e.touches || !e.touches[0]) return;
     const t = e.touches[0];
     const rect = mapContainer.getBoundingClientRect();
     movePress(L.point(t.clientX - rect.left, t.clientY - rect.top));
   }, { passive: true });
-  mapContainer.addEventListener('touchend', endPress, { passive: true });
+
+  mapContainer.addEventListener('touchend',   endPress, { passive: true });
   mapContainer.addEventListener('touchcancel', endPress, { passive: true });
 
   map.on('mousedown', (e) => {
@@ -298,28 +319,27 @@
   map.on('mousemove', (e) => movePress(e.containerPoint));
   map.on('mouseup', endPress);
 
+  // — Effacer tout —
   function clearAll(){
     if(currentMarker){ map.removeLayer(currentMarker); currentMarker = null; }
-    if(trackMarker){ map.removeLayer(trackMarker); trackMarker = null; }
-    if(routeLayer){ map.removeLayer(routeLayer); routeLayer = null; }
+    if(trackMarker)  { map.removeLayer(trackMarker);   trackMarker   = null; }
+    if(routeLayer)   { map.removeLayer(routeLayer);    routeLayer    = null; }
+    if(startMarker)  { map.removeLayer(startMarker);   startMarker   = null; }
     if(watchId !== null){ navigator.geolocation.clearWatch(watchId); watchId = null; }
     tracking = false;
     document.getElementById('btnTrack').classList.remove('active');
     markerLocked = false;
-    document.getElementById('btnLock').textContent = '🔓 Bloquer la position';
+    document.getElementById('btnLock').textContent = '🔓 Bloquer';
     document.getElementById('addressInput').value = '';
-    document.getElementById('latInput').value = '';
-    document.getElementById('lngInput').value = '';
+    document.getElementById('latInput').value     = '';
+    document.getElementById('lngInput').value     = '';
     setStatus('Effacé.');
     map.setView([46.6034, 1.8883], 6);
   }
 
-  // Géolocalisation ponctuelle (avec repli si le mode haute précision expire)
+  // — Géolocalisation ponctuelle —
   function locateOnce(){
-    if(!navigator.geolocation){
-      setStatus("La géolocalisation n'est pas supportée.");
-      return;
-    }
+    if(!navigator.geolocation){ setStatus("La géolocalisation n'est pas supportée."); return; }
     setStatus('Localisation en cours…');
     navigator.geolocation.getCurrentPosition(
       pos => {
@@ -348,15 +368,15 @@
   }
   document.getElementById('btnLocate').addEventListener('click', locateOnce);
 
-  // Recherche par adresse (Nominatim)
+  // — Recherche par adresse (Nominatim) —
   async function searchAddress(){
     const q = document.getElementById('addressInput').value.trim();
     if(!q){ setStatus('Entrez une adresse.'); return; }
-    setStatus('Recherche de l\'adresse…');
+    setStatus("Recherche de l'adresse…");
     try{
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`);
+      const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`);
       const data = await res.json();
-      if(data.length === 0){ setStatus('Adresse introuvable.'); return; }
+      if(!data.length){ setStatus('Adresse introuvable.'); return; }
       const { lat, lon, display_name } = data[0];
       placeBlueMarker(parseFloat(lat), parseFloat(lon), display_name);
       setStatus('Adresse trouvée.');
@@ -367,7 +387,7 @@
   document.getElementById('btnSearchAddress').addEventListener('click', searchAddress);
   document.getElementById('addressInput').addEventListener('keydown', e => { if(e.key === 'Enter') searchAddress(); });
 
-  // Recherche par point GPS
+  // — Recherche par coordonnées GPS —
   function searchGPS(){
     const lat = parseFloat(document.getElementById('latInput').value);
     const lng = parseFloat(document.getElementById('lngInput').value);
@@ -377,55 +397,73 @@
   }
   document.getElementById('btnSearchGPS').addEventListener('click', searchGPS);
 
-  // Effacer
+  // — Effacer —
   document.getElementById('btnClear').addEventListener('click', clearAll);
 
-  // Bloquer / débloquer le déplacement du marqueur bleu
+  // — Bloquer / débloquer le marqueur bleu —
   document.getElementById('btnLock').addEventListener('click', () => {
     markerLocked = !markerLocked;
     const btn = document.getElementById('btnLock');
-    btn.textContent = markerLocked ? '🔒 Débloquer la position' : '🔓 Bloquer la position';
+    btn.textContent = markerLocked ? '🔒 Débloquer' : '🔓 Bloquer';
     if(currentMarker){
       if(markerLocked) currentMarker.dragging.disable();
-      else currentMarker.dragging.enable();
+      else             currentMarker.dragging.enable();
     }
     setStatus(markerLocked ? 'Position bloquée.' : 'Position déplaçable.');
   });
 
-  // Envoi SMS : ouvre l'appli SMS avec les contacts et la position du marqueur bleu
+  // — Envoi SMS : position du marqueur bleu vers contact —
   document.getElementById('btnSMS').addEventListener('click', () => {
     if(!currentMarker){ setStatus('Aucune position à envoyer.'); return; }
-    const p = currentMarker.getLatLng();
+    const p    = currentMarker.getLatLng();
     const text = `Ma position : ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}\nhttps://maps.google.com/?q=${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
-    // sms: sans numéro → le téléphone ouvre le sélecteur de contacts
-    window.location.href = `sms:?body=${encodeURIComponent(text)}`;
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const sep   = isIOS ? '&' : '?';
+    window.location.href = `sms:${sep}body=${encodeURIComponent(text)}`;
     setStatus('SMS prêt — choisissez un contact.');
   });
 
-  // Itinéraire sur la carte via OSRM (OpenStreetMap)
+  // — Itinéraire sur la carte via OSRM —
   document.getElementById('btnItinerary').addEventListener('click', () => {
     if(!currentMarker){ setStatus('Aucun point de destination.'); return; }
     if(!navigator.geolocation){ setStatus("La géolocalisation n'est pas supportée."); return; }
-    setStatus('Calcul de l\'itinéraire…');
+    setStatus("Calcul de l'itinéraire…");
     navigator.geolocation.getCurrentPosition(
       async pos => {
         const { latitude: oLat, longitude: oLng } = pos.coords;
         const dest = currentMarker.getLatLng();
         try {
-          const url = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dest.lng},${dest.lat}?overview=full&geometries=geojson`;
-          const res = await fetch(url);
+          const url = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dest.lng},${dest.lat}?overview=full&geometries=geojson&annotations=false`;
+          const res  = await fetch(url);
+          if(!res.ok){ setStatus('Erreur serveur OSRM.'); return; }
           const data = await res.json();
-          if(!data.routes || !data.routes.length){ setStatus('Itinéraire introuvable.'); return; }
-          if(routeLayer){ map.removeLayer(routeLayer); }
+          if(!data.routes || !data.routes.length || !data.routes[0].geometry){
+            setStatus('Itinéraire introuvable.');
+            return;
+          }
+
+          // Supprimer l'ancien tracé et le marqueur de départ
+          if(routeLayer)  { map.removeLayer(routeLayer);  routeLayer  = null; }
+          if(startMarker) { map.removeLayer(startMarker); startMarker = null; }
+
+          // Tracer l'itinéraire (orange, en dessous des marqueurs)
           routeLayer = L.geoJSON(data.routes[0].geometry, {
             style: { color: '#ea580c', weight: 5, opacity: 0.85 }
           }).addTo(map);
+
+          // Marqueur de départ (vert)
+          startMarker = L.marker([oLat, oLng], { icon: greenIcon }).addTo(map);
+          startMarker.bindPopup('Départ');
+
+          // Marqueur bleu (destination) remis au-dessus du tracé, état conservé
+          bringBlueToFront();
+
           const dist = (data.routes[0].distance / 1000).toFixed(1);
-          const dur = Math.round(data.routes[0].duration / 60);
-          map.fitBounds(routeLayer.getBounds(), { padding: [30, 30] });
+          const dur  = Math.round(data.routes[0].duration / 60);
+          map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
           setStatus(`Itinéraire : ${dist} km — environ ${dur} min`);
         } catch(e) {
-          setStatus('Erreur lors du calcul de l\'itinéraire.');
+          setStatus("Erreur lors du calcul de l'itinéraire.");
         }
       },
       err => setStatus("Erreur de géolocalisation : " + err.message),
@@ -433,7 +471,7 @@
     );
   });
 
-  // Suivi de localisation (pic rouge qui suit)
+  // — Suivi de localisation (marqueur rouge) —
   document.getElementById('btnTrack').addEventListener('click', () => {
     const btn = document.getElementById('btnTrack');
     if(!tracking){
