@@ -390,19 +390,30 @@
     setStatus(markerLocked ? 'Position bloquée.' : 'Position déplaçable.');
   });
 
-  // Envoi SMS avec la position du marqueur bleu
+  // Envoi SMS avec les coordonnées du marqueur bleu
   document.getElementById('btnSMS').addEventListener('click', () => {
     if(!currentMarker){ setStatus('Aucune position à envoyer.'); return; }
     const p = currentMarker.getLatLng();
-    const text = `Ma position : https://maps.google.com/?q=${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
+    const text = `Mes coordonnées GPS : ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}\nhttps://maps.google.com/?q=${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
     window.location.href = `sms:?body=${encodeURIComponent(text)}`;
+    setStatus('SMS prêt.');
   });
 
-  // Itinéraire vers la position du marqueur bleu
+  // Itinéraire depuis la position GPS réelle vers le marqueur bleu
   document.getElementById('btnItinerary').addEventListener('click', () => {
-    if(!currentMarker){ setStatus('Aucune position pour l\'itinéraire.'); return; }
-    const p = currentMarker.getLatLng();
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${p.lat.toFixed(5)},${p.lng.toFixed(5)}`, '_blank');
+    if(!currentMarker){ setStatus('Aucun point de destination.'); return; }
+    if(!navigator.geolocation){ setStatus("La géolocalisation n'est pas supportée."); return; }
+    setStatus('Récupération de la position GPS…');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude, longitude } = pos.coords;
+        const dest = currentMarker.getLatLng();
+        window.open(`https://www.google.com/maps/dir/?api=1&origin=${latitude.toFixed(5)},${longitude.toFixed(5)}&destination=${dest.lat.toFixed(5)},${dest.lng.toFixed(5)}`, '_blank');
+        setStatus('Itinéraire ouvert.');
+      },
+      err => setStatus("Erreur de géolocalisation : " + err.message),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
   });
 
   // Suivi de localisation (pic rouge qui suit)
