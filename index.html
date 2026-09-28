@@ -416,9 +416,11 @@
   document.getElementById('btnSMS').addEventListener('click', () => {
     if(!currentMarker){ setStatus('Aucune position à envoyer.'); return; }
     const p    = currentMarker.getLatLng();
-    const text = `Ma position : ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}\nhttps://maps.google.com/?q=${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
+    const lat  = p.lat.toFixed(5);
+    const lng  = p.lng.toFixed(5);
+    const text = `Ma position : ${lat} / ${lng}\nhttps://maps.google.com/?q=${lat},${lng}`;
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const sep   = isIOS ? '&' : '?';
+    const sep   = isIOS ? ';&' : ';?';
     window.location.href = `sms:${sep}body=${encodeURIComponent(text)}`;
     setStatus('SMS prêt — choisissez un contact.');
   });
