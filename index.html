@@ -159,7 +159,10 @@
 <body>
 <div id="app">
   <header>
-    <h1>📍 Géolocalisation</h1>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <h1>📍 Géolocalisation</h1>
+      <button type="button" id="btnToggle" style="background:#374151;">▲ Masquer</button>
+    </div>
     <div id="status">Prêt.</div>
   </header>
 
@@ -195,6 +198,17 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded',()=>{
+    const b=document.getElementById('btnToggle'),c=document.getElementById('controls');
+    b.addEventListener('click',()=>{
+      const hide=c.style.display!=='none';
+      c.style.display=hide?'none':'flex';
+      b.textContent=hide?'▼ Afficher':'▲ Masquer';
+      setTimeout(()=>map.invalidateSize(),50);
+    });
+  });
+</script>
 <script>
   const map = L.map('map', { zoomControl: true }).setView([46.6034, 1.8883], 6);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
